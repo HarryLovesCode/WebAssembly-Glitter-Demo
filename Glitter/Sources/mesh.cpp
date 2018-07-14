@@ -63,20 +63,20 @@ void Mesh::draw(Shader shader)
         std::string number;
         std::string name = textures[i].type;
 
-        if (name == "iAlbedo")
+        if (name == "u_BaseColorSampler")
         {
             number = std::to_string(diffuseNr++);
         }
-        else if (name == "iNormal")
+        else if (name == "u_NormalSampler")
         {
             number = std::to_string(normalNr++);
         }
-        else if (name == "iMetallic")
+        else if (name == "u_MetallicRoughnessSampler")
         {
             number = std::to_string(metallicNr++);
         }
 
-        glUniform1i(glGetUniformLocation(shader.program, (name + number).c_str()), i);
+        glUniform1i(glGetUniformLocation(shader.program, name.c_str()), i);
         glBindTexture(GL_TEXTURE_2D, textures[i].id);
     }
 

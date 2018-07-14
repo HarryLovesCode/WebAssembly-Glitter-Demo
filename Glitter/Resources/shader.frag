@@ -1,135 +1,320 @@
 #version 300 es
+#define HAS_BASECOLORMAP
+#define HAS_NORMALS
+#define HAS_NORMALMAP
+#define HAS_METALROUGHNESSMAP
+#define SRGB_FAST_APPROXIMATION
 
-out lowp vec4 oColor;
+//
+// This fragment shader defines a reference implementation for Physically Based Shading of
+// a microfacet surface material defined by a glTF model.
+//
+// References:
+// [1] Real Shading in Unreal Engine 4
+//     http://blog.selfshadow.com/publications/s2013-shading-course/karis/s2013_pbs_epic_notes_v2.pdf
+// [2] Physically Based Shading at Disney
+//     http://blog.selfshadow.com/publications/s2012-shading-course/burley/s2012_pbs_disney_brdf_notes_v3.pdf
+// [3] README.md - Environment Maps
+//     https://github.com/KhronosGroup/glTF-WebGL-PBR/#environment-maps
+// [4] "An Inexpensive BRDF Model for Physically based Rendering" by Christophe Schlick
+//     https://www.cs.virginia.edu/~jdl/bib/appearance/analytic%20models/schlick94b.pdf
 
-in lowp vec2 tTexCoords;
-in lowp vec3 tWorldPos;
-in lowp vec3 tNormal;
+precision highp float;
 
-uniform lowp vec3 vCamPos;
-uniform lowp vec3 vAlbedo;
+uniform vec3 u_LightDirection;
+uniform vec3 u_LightColor;
 
-uniform lowp vec3 vLightPos[4];
-uniform lowp vec3 vLightCol[4];
+#ifdef USE_IBL
+uniform samplerCube u_DiffuseEnvSampler;
+uniform samplerCube u_SpecularEnvSampler;
+uniform sampler2D u_brdfLUT;
+#endif
 
-uniform sampler2D iAlbedo1;
-uniform sampler2D iNormal1;
-uniform sampler2D iMetallic1;
-uniform sampler2D iRoughness1;
-uniform sampler2D iAO;
+#ifdef HAS_BASECOLORMAP
+uniform sampler2D u_BaseColorSampler;
+#endif
+#ifdef HAS_NORMALMAP
+uniform sampler2D u_NormalSampler;
+uniform float u_NormalScale;
+#endif
+#ifdef HAS_EMISSIVEMAP
+uniform sampler2D u_EmissiveSampler;
+uniform vec3 u_EmissiveFactor;
+#endif
+#ifdef HAS_METALROUGHNESSMAP
+uniform sampler2D u_MetallicRoughnessSampler;
+#endif
+#ifdef HAS_OCCLUSIONMAP
+uniform sampler2D u_OcclusionSampler;
+uniform float u_OcclusionStrength;
+#endif
 
-const lowp float PI = 3.14159265359;
+uniform vec2 u_MetallicRoughnessValues;
+uniform vec4 u_BaseColorFactor;
 
-lowp vec3 normalFromMap()
+uniform vec3 u_Camera;
+
+// debugging flags used for shader output of intermediate PBR variables
+uniform vec4 u_ScaleDiffBaseMR;
+uniform vec4 u_ScaleFGDSpec;
+uniform vec4 u_ScaleIBLAmbient;
+
+in vec3 v_Position;
+in vec2 v_UV;
+
+#ifdef HAS_NORMALS
+#ifdef HAS_TANGENTS
+in mat3 v_TBN;
+#else
+in vec3 v_Normal;
+#endif
+#endif
+
+out vec4 frag_color;
+
+// Encapsulate the various inputs used by the various functions in the shading equation
+// We store values in this struct to simplify the integration of alternative implementations
+// of the shading terms, outlined in the Readme.MD Appendix.
+struct PBRInfo
 {
-    lowp vec3 tangentNormal = texture(iNormal1, tTexCoords).xyz * 2.0 - 1.0;
+    float NdotL;                  // cos angle between normal and light direction
+    float NdotV;                  // cos angle between normal and view direction
+    float NdotH;                  // cos angle between normal and half vector
+    float LdotH;                  // cos angle between light direction and half vector
+    float VdotH;                  // cos angle between view direction and half vector
+    float perceptualRoughness;    // roughness value, as authored by the model creator (input to shader)
+    float metalness;              // metallic value at the surface
+    vec3 reflectance0;            // full reflectance color (normal incidence angle)
+    vec3 reflectance90;           // reflectance color at grazing angle
+    float alphaRoughness;         // roughness mapped to a more linear change in the roughness (proposed by [2])
+    vec3 diffuseColor;            // color contribution from diffuse lighting
+    vec3 specularColor;           // color contribution from specular lighting
+};
 
-    lowp vec3 Q1  = dFdx(tWorldPos);
-    lowp vec3 Q2  = dFdy(tWorldPos);
-    lowp vec2 st1 = dFdx(tTexCoords);
-    lowp vec2 st2 = dFdy(tTexCoords);
+const float M_PI = 3.141592653589793;
+const float c_MinRoughness = 0.04;
 
-    lowp vec3 N   = normalize(tNormal);
-    lowp vec3 T  = normalize(Q1 * st2.t - Q2 * st1.t);
-    lowp vec3 B  = -normalize(cross(N, T));
-    lowp mat3 TBN = mat3(T, B, N);
-
-    return normalize(TBN * tangentNormal);
+vec4 SRGBtoLINEAR(vec4 srgbIn)
+{
+    #ifdef MANUAL_SRGB
+    #ifdef SRGB_FAST_APPROXIMATION
+    vec3 linOut = pow(srgbIn.xyz,vec3(2.2));
+    #else //SRGB_FAST_APPROXIMATION
+    vec3 bLess = step(vec3(0.04045),srgbIn.xyz);
+    vec3 linOut = mix( srgbIn.xyz/vec3(12.92), pow((srgbIn.xyz+vec3(0.055))/vec3(1.055),vec3(2.4)), bLess);
+    #endif //SRGB_FAST_APPROXIMATION
+    return vec4(linOut,srgbIn.w);;
+    #else //MANUAL_SRGB
+    return srgbIn;
+    #endif //MANUAL_SRGB
 }
 
-lowp vec3 fresnelSchlick(lowp float cosTheta, lowp vec3 f0)
+// Find the normal for this fragment, pulling either from a predefined normal map
+// or from the interpolated mesh normal and tangent attributes.
+vec3 getNormal()
 {
-    return f0 + (1.0 - f0) * pow(1.0 - cosTheta, 5.0);
+    // Retrieve the tangent space matrix
+#ifndef HAS_TANGENTS
+    vec3 pos_dx = dFdx(v_Position);
+    vec3 pos_dy = dFdy(v_Position);
+    vec3 tex_dx = dFdx(vec3(v_UV, 0.0));
+    vec3 tex_dy = dFdy(vec3(v_UV, 0.0));
+    vec3 t = (tex_dy.t * pos_dx - tex_dx.t * pos_dy) / (tex_dx.s * tex_dy.t - tex_dy.s * tex_dx.t);
+
+#ifdef HAS_NORMALS
+    vec3 ng = normalize(v_Normal);
+#else
+    vec3 ng = cross(pos_dx, pos_dy);
+#endif
+
+    t = normalize(t - ng * dot(ng, t));
+    vec3 b = normalize(cross(ng, t));
+    mat3 tbn = mat3(t, b, ng);
+#else // HAS_TANGENTS
+    mat3 tbn = v_TBN;
+#endif
+
+#ifdef HAS_NORMALMAP
+    vec3 n = texture(u_NormalSampler, v_UV).rgb;
+    n = normalize(tbn * ((2.0 * n - 1.0) * vec3(u_NormalScale, u_NormalScale, 1.0)));
+#else
+    // The tbn matrix is linearly interpolated, so we need to re-normalize
+    vec3 n = normalize(tbn[2].xyz);
+#endif
+
+    return n;
 }
 
-lowp float distributionGGX(lowp vec3 N, lowp vec3 H, lowp float roughness)
+// Calculation of the lighting contribution from an optional Image Based Light source.
+// Precomputed Environment Maps are required uniform inputs and are computed as outlined in [1].
+// See our README.md on Environment Maps [3] for additional discussion.
+#ifdef USE_IBL
+vec3 getIBLContribution(PBRInfo pbrInputs, vec3 n, vec3 reflection)
 {
-    lowp float a      = roughness*roughness;
-    lowp float a2     = a*a;
-    lowp float NdotH  = max(dot(N, H), 0.0);
-    lowp float NdotH2 = NdotH*NdotH;
-	
-    lowp float num   = a2;
-    lowp float denom = (NdotH2 * (a2 - 1.0) + 1.0);
-    denom = PI * denom * denom;
-	
-    return num / denom;
+    float mipCount = 9.0; // resolution of 512x512
+    float lod = (pbrInputs.perceptualRoughness * mipCount);
+    // retrieve a scale and bias to F0. See [1], Figure 3
+    vec3 brdf = SRGBtoLINEAR(texture2D(u_brdfLUT, vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness))).rgb;
+    vec3 diffuseLight = SRGBtoLINEAR(textureCube(u_DiffuseEnvSampler, n)).rgb;
+    vec3 specularLight = SRGBtoLINEAR(textureCube(u_SpecularEnvSampler, reflection)).rgb;
+
+    vec3 diffuse = diffuseLight * pbrInputs.diffuseColor;
+    vec3 specular = specularLight * (pbrInputs.specularColor * brdf.x + brdf.y);
+
+    // For presentation, this allows us to disable IBL terms
+    diffuse *= u_ScaleIBLAmbient.x;
+    specular *= u_ScaleIBLAmbient.y;
+
+    return diffuse + specular;
+}
+#endif
+
+// Basic Lambertian diffuse
+// Implementation from Lambert's Photometria https://archive.org/details/lambertsphotome00lambgoog
+// See also [1], Equation 1
+vec3 diffuse(PBRInfo pbrInputs)
+{
+    return pbrInputs.diffuseColor / M_PI;
 }
 
-lowp float geometrySchlickGGX(lowp float NdotV, lowp float roughness)
+// The following equation models the Fresnel reflectance term of the spec equation (aka F())
+// Implementation of fresnel from [4], Equation 15
+vec3 specularReflection(PBRInfo pbrInputs)
 {
-    lowp float r = (roughness + 1.0);
-    lowp float k = (r*r) / 8.0;
-
-    lowp float num   = NdotV;
-    lowp float denom = NdotV * (1.0 - k) + k;
-	
-    return num / denom;
+    return pbrInputs.reflectance0 + (pbrInputs.reflectance90 - pbrInputs.reflectance0) * pow(clamp(1.0 - pbrInputs.VdotH, 0.0, 1.0), 5.0);
 }
 
-lowp float geometrySmith(lowp vec3 N, lowp vec3 V, lowp vec3 L, lowp float roughness)
+// This calculates the specular geometric attenuation (aka G()),
+// where rougher material will reflect less light back to the viewer.
+// This implementation is based on [1] Equation 4, and we adopt their modifications to
+// alphaRoughness as input as originally proposed in [2].
+float geometricOcclusion(PBRInfo pbrInputs)
 {
-    lowp float NdotV = max(dot(N, V), 0.0);
-    lowp float NdotL = max(dot(N, L), 0.0);
-    lowp float ggx2  = geometrySchlickGGX(NdotV, roughness);
-    lowp float ggx1  = geometrySchlickGGX(NdotL, roughness);
-	
-    return ggx1 * ggx2;
+    float NdotL = pbrInputs.NdotL;
+    float NdotV = pbrInputs.NdotV;
+    float r = pbrInputs.alphaRoughness;
+
+    float attenuationL = 2.0 * NdotL / (NdotL + sqrt(r * r + (1.0 - r * r) * (NdotL * NdotL)));
+    float attenuationV = 2.0 * NdotV / (NdotV + sqrt(r * r + (1.0 - r * r) * (NdotV * NdotV)));
+    return attenuationL * attenuationV;
+}
+
+// The following equation(s) model the distribution of microfacet normals across the area being drawn (aka D())
+// Implementation from "Average Irregularity Representation of a Roughened Surface for Ray Reflection" by T. S. Trowbridge, and K. P. Reitz
+// Follows the distribution function recommended in the SIGGRAPH 2013 course notes from EPIC Games [1], Equation 3.
+float microfacetDistribution(PBRInfo pbrInputs)
+{
+    float roughnessSq = pbrInputs.alphaRoughness * pbrInputs.alphaRoughness;
+    float f = (pbrInputs.NdotH * roughnessSq - pbrInputs.NdotH) * pbrInputs.NdotH + 1.0;
+    return roughnessSq / (M_PI * f * f);
 }
 
 void main()
-{   
-    lowp vec3 vAlbedo = pow(texture(iAlbedo1, tTexCoords).rgb, vec3(2.2));
-    lowp float fMetallic = texture(iMetallic1, tTexCoords).b;
-    lowp float fRoughness = texture(iMetallic1, tTexCoords).g;
+{
+    // Metallic and Roughness material properties are packed together
+    // In glTF, these factors can be specified by fixed scalar values
+    // or from a metallic-roughness map
+    float perceptualRoughness = u_MetallicRoughnessValues.y;
+    float metallic = u_MetallicRoughnessValues.x;
+#ifdef HAS_METALROUGHNESSMAP
+    // Roughness is stored in the 'g' channel, metallic is stored in the 'b' channel.
+    // This layout intentionally reserves the 'r' channel for (optional) occlusion map data
+    vec4 mrSample = texture(u_MetallicRoughnessSampler, v_UV);
+    perceptualRoughness = mrSample.g * perceptualRoughness;
+    metallic = mrSample.b * metallic;
+#endif
+    perceptualRoughness = clamp(perceptualRoughness, c_MinRoughness, 1.0);
+    metallic = clamp(metallic, 0.0, 1.0);
+    // Roughness is authored as perceptual roughness; as is convention,
+    // convert to material roughness by squaring the perceptual roughness [2].
+    float alphaRoughness = perceptualRoughness * perceptualRoughness;
 
-    fMetallic = clamp(fMetallic, 0.0, 1.0);
-    fRoughness = clamp(fRoughness, 0.04, 1.0);
+    // The albedo may be defined from a base texture or a flat color
+#ifdef HAS_BASECOLORMAP
+    vec4 baseColor = texture(u_BaseColorSampler, v_UV) * u_BaseColorFactor;
+#else
+    vec4 baseColor = u_BaseColorFactor;
+#endif
 
-    // lowp float fMetallic = clamp(texture(iMetallic1, tTexCoords).g, 0.04, 1.0);
-    // lowp float fRoughness = clamp(texture(iMetallic1, tTexCoords).r, 0.04, 1.0);
-    lowp float fAO = texture(iAO, tTexCoords).r;
+    vec3 f0 = vec3(0.04);
+    vec3 diffuseColor = baseColor.rgb * (vec3(1.0) - f0);
+    diffuseColor *= 1.0 - metallic;
+    vec3 specularColor = mix(f0, baseColor.rgb, metallic);
 
-    lowp vec3 norm = normalFromMap();
-    lowp vec3 dir = normalize(vCamPos - tWorldPos);
+    // Compute reflectance.
+    float reflectance = max(max(specularColor.r, specularColor.g), specularColor.b);
 
-    lowp vec3 lo = vec3(0.0);
-    lowp vec3 f0 = vec3(0.04);
-    f0 = mix(f0, vAlbedo, fMetallic);
+    // For typical incident reflectance range (between 4% to 100%) set the grazing reflectance to 100% for typical fresnel effect.
+    // For very low reflectance range on highly diffuse objects (below 4%), incrementally reduce grazing reflecance to 0%.
+    float reflectance90 = clamp(reflectance * 25.0, 0.0, 1.0);
+    vec3 specularEnvironmentR0 = specularColor.rgb;
+    vec3 specularEnvironmentR90 = vec3(1.0, 1.0, 1.0) * reflectance90;
 
-    for (int i = 0; i < 4; ++i) {
-        lowp vec3 to = vLightPos[i] - tWorldPos;
+    vec3 n = getNormal();                             // normal at surface point
+    vec3 v = normalize(u_Camera - v_Position);        // Vector from surface point to camera
+    vec3 l = normalize(u_LightDirection);             // Vector from surface point to light
+    vec3 h = normalize(l+v);                          // Half vector between both l and v
+    vec3 reflection = -normalize(reflect(v, n));
 
-        lowp vec3 l = normalize(to);
-        lowp vec3 h = normalize(dir + l);
+    float NdotL = clamp(dot(n, l), 0.001, 1.0);
+    float NdotV = clamp(abs(dot(n, v)), 0.001, 1.0);
+    float NdotH = clamp(dot(n, h), 0.0, 1.0);
+    float LdotH = clamp(dot(l, h), 0.0, 1.0);
+    float VdotH = clamp(dot(v, h), 0.0, 1.0);
 
-        lowp float d = length(to);
-        lowp float a = 1.0 / (d * d);
+    PBRInfo pbrInputs = PBRInfo(
+        NdotL,
+        NdotV,
+        NdotH,
+        LdotH,
+        VdotH,
+        perceptualRoughness,
+        metallic,
+        specularEnvironmentR0,
+        specularEnvironmentR90,
+        alphaRoughness,
+        diffuseColor,
+        specularColor
+    );
 
-        lowp vec3 radiance = vLightCol[i] * a;
-        lowp vec3 f = fresnelSchlick(max(dot(h, dir), 0.0), f0);
+    // Calculate the shading terms for the microfacet specular shading model
+    vec3 F = specularReflection(pbrInputs);
+    float G = geometricOcclusion(pbrInputs);
+    float D = microfacetDistribution(pbrInputs);
 
-        lowp float ndf = distributionGGX(norm, h, fRoughness);
-        lowp float g = geometrySmith(norm, dir, l, fRoughness);
-        
-        // Cook-Torrance BRDF
-        lowp vec3 numerator = ndf * g * f;
-        lowp float denom = 4.0 * max(dot(norm, dir), 0.0) * max(dot(norm, l), 0.0) + 0.001;
-        lowp vec3 specular = numerator / denom;
+    // Calculation of analytical lighting contribution
+    vec3 diffuseContrib = (1.0 - F) * diffuse(pbrInputs);
+    vec3 specContrib = F * G * D / (4.0 * NdotL * NdotV);
+    // Obtain final intensity as reflectance (BRDF) scaled by the energy of the light (cosine law)
+    vec3 color = NdotL * u_LightColor * (diffuseContrib + specContrib);
 
-        lowp vec3 kS = f;
-        lowp vec3 kD = vec3(1.0) - kS;
-        kD *= 1.0 - fMetallic;
+    // Calculate lighting contribution from image based lighting source (IBL)
+#ifdef USE_IBL
+    color += getIBLContribution(pbrInputs, n, reflection);
+#endif
 
-        lowp float nDotL = max(dot(norm, l), 0.0);
-        lo += (kD * vAlbedo / PI + specular) * radiance * nDotL;
-    }
+    // Apply optional PBR terms for additional (optional) shading
+#ifdef HAS_OCCLUSIONMAP
+    float ao = texture2D(u_OcclusionSampler, v_UV).r;
+    color = mix(color, color * ao, u_OcclusionStrength);
+#endif
 
-    lowp vec3 ambient = vec3(0.03) * vAlbedo; // * fAO;
-    lowp vec3 color = ambient + lo;
+#ifdef HAS_EMISSIVEMAP
+    vec3 emissive = SRGBtoLINEAR(texture2D(u_EmissiveSampler, v_UV)).rgb * u_EmissiveFactor;
+    color += emissive;
+#endif
 
-    color = color / (color + vec3(1.0));
-    color = pow(color, vec3(1.0 / 2.2));
+    // This section uses mix to override final color for reference app visualization
+    // of various parameters in the lighting equation.
+    color = mix(color, F, u_ScaleFGDSpec.x);
+    color = mix(color, vec3(G), u_ScaleFGDSpec.y);
+    color = mix(color, vec3(D), u_ScaleFGDSpec.z);
+    color = mix(color, specContrib, u_ScaleFGDSpec.w);
 
-    oColor = vec4(color, 1.0);
+    color = mix(color, diffuseContrib, u_ScaleDiffBaseMR.x);
+    color = mix(color, baseColor.rgb, u_ScaleDiffBaseMR.y);
+    color = mix(color, vec3(metallic), u_ScaleDiffBaseMR.z);
+    color = mix(color, vec3(perceptualRoughness), u_ScaleDiffBaseMR.w);
+
+    frag_color = vec4(pow(color,vec3(1.0/2.2)), 1.0);
 }

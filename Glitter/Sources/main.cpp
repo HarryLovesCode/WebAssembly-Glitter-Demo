@@ -33,9 +33,8 @@ int main()
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_SAMPLES, 32);
 
-    mWindow = glfwCreateWindow(1440, 900, "WebGL", NULL, NULL);
+    mWindow = glfwCreateWindow(1280, 720, "WebGL", NULL, NULL);
 
     if (mWindow == nullptr)
     {

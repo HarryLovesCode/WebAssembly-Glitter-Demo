@@ -82,9 +82,9 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
     {
         aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
 
-        std::vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "iAlbedo");
-        std::vector<Texture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "iNormal");
-        std::vector<Texture> metallicMaps = loadMaterialTextures(material, aiTextureType_LIGHTMAP, "iMetallic");
+        std::vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "u_BaseColorSampler");
+        std::vector<Texture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "u_NormalSampler");
+        std::vector<Texture> metallicMaps = loadMaterialTextures(material, aiTextureType_LIGHTMAP, "u_MetallicRoughnessSampler");
 
         textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
         textures.insert(textures.end(), metallicMaps.begin(), metallicMaps.end());

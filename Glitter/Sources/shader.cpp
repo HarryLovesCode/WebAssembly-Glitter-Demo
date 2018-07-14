@@ -74,45 +74,44 @@ void Shader::activate(Camera cam)
 {
     glUseProgram(program);
 
-    glm::mat4 model = glm::mat4(1.0);
+    glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 persp = cam.getProj();
     glm::mat4 view = cam.getView();
 
-    model = scale(model, glm::vec3(40.0, 40.0, 40.0));
+    model = glm::scale(model, glm::vec3(40.0f, 40.0f, 40.0f));
 
-    unsigned int transLoc = glGetUniformLocation(program, "mView");
-    unsigned int perspLoc = glGetUniformLocation(program, "mProjection");
-    unsigned int modelLoc = glGetUniformLocation(program, "mModel");
+    glm::mat4 mvp = persp * view * model;
+    glm::mat4 normal = glm::inverse(view * model);
+    normal = glm::transpose(normal);
 
-    glUniformMatrix4fv(transLoc, 1, GL_FALSE, glm::value_ptr(view));
-    glUniformMatrix4fv(perspLoc, 1, GL_FALSE, glm::value_ptr(persp));
+    unsigned int mvpLoc = glGetUniformLocation(program, "u_MVPMatrix");
+    unsigned int modelLoc = glGetUniformLocation(program, "u_ModelMatrix");
+    unsigned int normalLoc = glGetUniformLocation(program, "u_NormalMatrix");
+
+    glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, glm::value_ptr(mvp));
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
+    glUniformMatrix4fv(normalLoc, 1, GL_FALSE, glm::value_ptr(normal));
 
-    glm::vec3 lightPositions[] = {
-        glm::vec3(-10.0f, 10.0f, -10.0f),
-        glm::vec3(10.0f, 10.0f, -10.0f),
-        glm::vec3(-10.0f, -10.0f, -10.0f),
-        glm::vec3(10.0f, -10.0f, -10.0f)};
+    glm::vec3 lightDir = glm::vec3(0.0, 0.0, -1.0);
+    glm::vec3 lightCol = glm::vec3(1.0, 1.0, 1.0);
 
-    glm::vec3 lightColors[] = {
-        glm::vec3(1000.0f, 1000.0f, 1000.0f),
-        glm::vec3(1000.0f, 1000.0f, 1000.0f),
-        glm::vec3(1000.0f, 1000.0f, 1000.0f),
-        glm::vec3(1000.0f, 1000.0f, 1000.0f)};
+    unsigned int camLoc = glGetUniformLocation(program, "u_Camera");
+    unsigned int lightDirLoc = glGetUniformLocation(program, "u_LightDirection");
+    unsigned int lightColLoc = glGetUniformLocation(program, "u_LightColor");
 
-    unsigned int camLoc = glGetUniformLocation(program, "vCamPos");
-    glUniform3f(camLoc, cam.position.x, cam.position.y, cam.position.z);
+    glm::vec3 cPos = mvp * glm::vec4(cam.position.x, cam.position.y, cam.position.z, 1.0);
 
-    for (unsigned int i = 0; i < 4; ++i)
-    {
-        std::string posName = "vLightPos[" + std::to_string(i) + "]";
-        std::string colName = "vLightCol[" + std::to_string(i) + "]";
-        unsigned int posLoc = glGetUniformLocation(program, posName.c_str());
-        unsigned int colLoc = glGetUniformLocation(program, colName.c_str());
+    glUniform3f(camLoc, cPos.x, cPos.y, cPos.z);
+    glUniform3f(lightDirLoc, lightDir.x, lightDir.y, lightDir.z);
+    glUniform3f(lightColLoc, lightCol.x, lightCol.y, lightCol.z);
 
-        glUniform3f(posLoc, lightPositions[i][0], lightPositions[i][1], lightPositions[i][2]);
-        glUniform3f(colLoc, lightColors[i][0], lightColors[i][1], lightColors[i][2]);
-    }
+
+    unsigned int roughLoc = glGetUniformLocation(program, "u_MetallicRoughnessValues");
+    unsigned int baseLoc = glGetUniformLocation(program, "u_BaseColorFactor");
+
+    glUniform2f(roughLoc, 1.0, 1.0);
+    glUniform4f(baseLoc, 1.0, 1.0, 1.0, 1.0);
+    glUniform1f(glGetUniformLocation(program, "u_NormalScale"), 1.0f);
 }
 
 void Shader::deactivate()
