@@ -85,10 +85,12 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
         std::vector<Texture> diffuseMaps = loadMaterialTextures(material, aiTextureType_DIFFUSE, "u_BaseColorSampler");
         std::vector<Texture> normalMaps = loadMaterialTextures(material, aiTextureType_NORMALS, "u_NormalSampler");
         std::vector<Texture> metallicMaps = loadMaterialTextures(material, aiTextureType_LIGHTMAP, "u_MetallicRoughnessSampler");
+        std::vector<Texture> occlusionMaps = loadMaterialTextures(material, aiTextureType_LIGHTMAP, "u_OcclusionSampler");
 
         textures.insert(textures.end(), diffuseMaps.begin(), diffuseMaps.end());
         textures.insert(textures.end(), metallicMaps.begin(), metallicMaps.end());
         textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
+        textures.insert(textures.end(), occlusionMaps.begin(), occlusionMaps.end());
 
         std::cout << "aiTextureType_NONE: " << material->GetTextureCount(aiTextureType_NONE) << std::endl;
         std::cout << "aiTextureType_DIFFUSE: " << material->GetTextureCount(aiTextureType_DIFFUSE) << std::endl;

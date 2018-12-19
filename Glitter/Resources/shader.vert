@@ -1,9 +1,7 @@
 #version 300 es
-
 precision highp float;
-
-#define HAS_UV
-#define HAS_NORMALS
+#define HAS_UV 1 
+#define HAS_NORMALS 1
 
 layout (location=0) in vec4 a_Position;
 #ifdef HAS_NORMALS

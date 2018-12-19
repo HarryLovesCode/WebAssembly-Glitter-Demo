@@ -74,15 +74,11 @@ void Shader::activate(Camera cam)
 {
     glUseProgram(program);
 
-    glm::mat4 model = glm::mat4(1.0f);
     glm::mat4 persp = cam.getProj();
     glm::mat4 view = cam.getView();
-
-    model = glm::scale(model, glm::vec3(40.0f, 40.0f, 40.0f));
-
+    glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
     glm::mat4 mvp = persp * view * model;
-    glm::mat4 normal = glm::inverse(view * model);
-    normal = glm::transpose(normal);
+    glm::mat4 normal = glm::transpose(glm::inverse(view * model));
 
     unsigned int mvpLoc = glGetUniformLocation(program, "u_MVPMatrix");
     unsigned int modelLoc = glGetUniformLocation(program, "u_ModelMatrix");
@@ -92,19 +88,18 @@ void Shader::activate(Camera cam)
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(normalLoc, 1, GL_FALSE, glm::value_ptr(normal));
 
-    glm::vec3 lightDir = glm::vec3(0.0, 0.0, -1.0);
-    glm::vec3 lightCol = glm::vec3(1.0, 1.0, 1.0);
+    glm::vec3 lightDir = glm::vec3(0.0, 0.0, 1.0);
+    glm::vec3 lightCol = glm::vec3(2.0, 2.0, 2.0);
 
     unsigned int camLoc = glGetUniformLocation(program, "u_Camera");
     unsigned int lightDirLoc = glGetUniformLocation(program, "u_LightDirection");
     unsigned int lightColLoc = glGetUniformLocation(program, "u_LightColor");
 
-    glm::vec3 cPos = mvp * glm::vec4(cam.position.x, cam.position.y, cam.position.z, 1.0);
+    glm::vec3 cPos = glm::vec4(cam.position.x, cam.position.y, cam.position.z, 1.0);
 
     glUniform3f(camLoc, cPos.x, cPos.y, cPos.z);
     glUniform3f(lightDirLoc, lightDir.x, lightDir.y, lightDir.z);
     glUniform3f(lightColLoc, lightCol.x, lightCol.y, lightCol.z);
-
 
     unsigned int roughLoc = glGetUniformLocation(program, "u_MetallicRoughnessValues");
     unsigned int baseLoc = glGetUniformLocation(program, "u_BaseColorFactor");
@@ -112,6 +107,7 @@ void Shader::activate(Camera cam)
     glUniform2f(roughLoc, 1.0, 1.0);
     glUniform4f(baseLoc, 1.0, 1.0, 1.0, 1.0);
     glUniform1f(glGetUniformLocation(program, "u_NormalScale"), 1.0f);
+    glUniform1f(glGetUniformLocation(program, "u_OcclusionStrength"), 1.0f);
 }
 
 void Shader::deactivate()

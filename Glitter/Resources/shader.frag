@@ -1,9 +1,12 @@
 #version 300 es
-#define HAS_BASECOLORMAP
-#define HAS_NORMALS
-#define HAS_NORMALMAP
-#define HAS_METALROUGHNESSMAP
-#define SRGB_FAST_APPROXIMATION
+precision highp float;
+#define HAS_BASECOLORMAP 1
+#define HAS_NORMALS 1
+#define HAS_NORMALMAP 1
+#define HAS_METALROUGHNESSMAP 1
+#define HAS_OCCLUSIONMAP 1
+#define MANUAL_SRGB 1
+#define SRGB_FAST_APPROXIMATION 1
 
 //
 // This fragment shader defines a reference implementation for Physically Based Shading of
@@ -18,8 +21,6 @@
 //     https://github.com/KhronosGroup/glTF-WebGL-PBR/#environment-maps
 // [4] "An Inexpensive BRDF Model for Physically based Rendering" by Christophe Schlick
 //     https://www.cs.virginia.edu/~jdl/bib/appearance/analytic%20models/schlick94b.pdf
-
-precision highp float;
 
 uniform vec3 u_LightDirection;
 uniform vec3 u_LightColor;
@@ -154,7 +155,7 @@ vec3 getIBLContribution(PBRInfo pbrInputs, vec3 n, vec3 reflection)
     float mipCount = 9.0; // resolution of 512x512
     float lod = (pbrInputs.perceptualRoughness * mipCount);
     // retrieve a scale and bias to F0. See [1], Figure 3
-    vec3 brdf = SRGBtoLINEAR(texture2D(u_brdfLUT, vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness))).rgb;
+    vec3 brdf = SRGBtoLINEAR(texture(u_brdfLUT, vec2(pbrInputs.NdotV, 1.0 - pbrInputs.perceptualRoughness))).rgb;
     vec3 diffuseLight = SRGBtoLINEAR(textureCube(u_DiffuseEnvSampler, n)).rgb;
     vec3 specularLight = SRGBtoLINEAR(textureCube(u_SpecularEnvSampler, reflection)).rgb;
 
@@ -231,7 +232,7 @@ void main()
 
     // The albedo may be defined from a base texture or a flat color
 #ifdef HAS_BASECOLORMAP
-    vec4 baseColor = texture(u_BaseColorSampler, v_UV) * u_BaseColorFactor;
+    vec4 baseColor = SRGBtoLINEAR(texture(u_BaseColorSampler, v_UV)) * u_BaseColorFactor;
 #else
     vec4 baseColor = u_BaseColorFactor;
 #endif
@@ -295,12 +296,12 @@ void main()
 
     // Apply optional PBR terms for additional (optional) shading
 #ifdef HAS_OCCLUSIONMAP
-    float ao = texture2D(u_OcclusionSampler, v_UV).r;
+    float ao = texture(u_OcclusionSampler, v_UV).r;
     color = mix(color, color * ao, u_OcclusionStrength);
 #endif
 
 #ifdef HAS_EMISSIVEMAP
-    vec3 emissive = SRGBtoLINEAR(texture2D(u_EmissiveSampler, v_UV)).rgb * u_EmissiveFactor;
+    vec3 emissive = SRGBtoLINEAR(texture(u_EmissiveSampler, v_UV)).rgb * u_EmissiveFactor;
     color += emissive;
 #endif
 
@@ -316,5 +317,5 @@ void main()
     color = mix(color, vec3(metallic), u_ScaleDiffBaseMR.z);
     color = mix(color, vec3(perceptualRoughness), u_ScaleDiffBaseMR.w);
 
-    frag_color = vec4(pow(color,vec3(1.0/2.2)), 1.0);
+    frag_color = vec4(pow(color,vec3(1.0/2.2)), baseColor.a);
 }

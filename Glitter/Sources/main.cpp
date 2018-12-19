@@ -33,6 +33,7 @@ int main()
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
+    glfwWindowHint(GLFW_SAMPLES, 16);
 
     mWindow = glfwCreateWindow(1280, 720, "WebGL", NULL, NULL);
 
@@ -46,13 +47,13 @@ int main()
 
     fprintf(stdout, "WebGL %s\n", glGetString(GL_VERSION));
 
-    glClearColor(0.3f, 0.3f, 0.3f, 1.0f);
+    glClearColor(0.7f, 0.7f, 0.7f, 1.0f);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
 
     cam.init(mWindow);
     prog.init("shader.vert", "shader.frag");
-    mod.load("Corset.gltf");
+    mod.load("SciFiHelmet.gltf");
 
     EmscriptenFullscreenStrategy strategy;
     strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_DEFAULT;
