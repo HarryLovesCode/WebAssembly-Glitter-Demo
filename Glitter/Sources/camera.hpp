@@ -27,8 +27,6 @@ class Camera
     float speed;
     float sensitivity;
     GLFWwindow *window;
-    double lastX, lastY;
-    glm::vec3 lastPos;
 
   public:
     Camera();

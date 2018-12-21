@@ -12,11 +12,9 @@ void Model::load(std::string path)
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode)
     {
-        std::cout << "ERROR::ASSIMP::" << import.GetErrorString() << std::endl;
+        std::cout << "Assimp error: " << import.GetErrorString() << std::endl;
         return;
     }
-
-    directory = "";
 
     processNode(scene->mRootNode, scene);
 }
@@ -92,19 +90,19 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
         textures.insert(textures.end(), normalMaps.begin(), normalMaps.end());
         textures.insert(textures.end(), occlusionMaps.begin(), occlusionMaps.end());
 
-        std::cout << "aiTextureType_NONE: " << material->GetTextureCount(aiTextureType_NONE) << std::endl;
-        std::cout << "aiTextureType_DIFFUSE: " << material->GetTextureCount(aiTextureType_DIFFUSE) << std::endl;
-        std::cout << "aiTextureType_SPECULAR: " << material->GetTextureCount(aiTextureType_SPECULAR) << std::endl;
-        std::cout << "aiTextureType_AMBIENT: " << material->GetTextureCount(aiTextureType_AMBIENT) << std::endl;
-        std::cout << "aiTextureType_EMISSIVE: " << material->GetTextureCount(aiTextureType_EMISSIVE) << std::endl;
-        std::cout << "aiTextureType_HEIGHT: " << material->GetTextureCount(aiTextureType_HEIGHT) << std::endl;
-        std::cout << "aiTextureType_NORMALS: " << material->GetTextureCount(aiTextureType_NORMALS) << std::endl;
-        std::cout << "aiTextureType_SHININESS: " << material->GetTextureCount(aiTextureType_SHININESS) << std::endl;
-        std::cout << "aiTextureType_OPACITY: " << material->GetTextureCount(aiTextureType_OPACITY) << std::endl;
-        std::cout << "aiTextureType_DISPLACEMENT: " << material->GetTextureCount(aiTextureType_DISPLACEMENT) << std::endl;
-        std::cout << "aiTextureType_LIGHTMAP: " << material->GetTextureCount(aiTextureType_LIGHTMAP) << std::endl;
-        std::cout << "aiTextureType_REFLECTION: " << material->GetTextureCount(aiTextureType_REFLECTION) << std::endl;
-        std::cout << "aiTextureType_UNKNOWN: " << material->GetTextureCount(aiTextureType_UNKNOWN) << std::endl;
+        // std::cout << "aiTextureType_NONE: " << material->GetTextureCount(aiTextureType_NONE) << std::endl;
+        // std::cout << "aiTextureType_DIFFUSE: " << material->GetTextureCount(aiTextureType_DIFFUSE) << std::endl;
+        // std::cout << "aiTextureType_SPECULAR: " << material->GetTextureCount(aiTextureType_SPECULAR) << std::endl;
+        // std::cout << "aiTextureType_AMBIENT: " << material->GetTextureCount(aiTextureType_AMBIENT) << std::endl;
+        // std::cout << "aiTextureType_EMISSIVE: " << material->GetTextureCount(aiTextureType_EMISSIVE) << std::endl;
+        // std::cout << "aiTextureType_HEIGHT: " << material->GetTextureCount(aiTextureType_HEIGHT) << std::endl;
+        // std::cout << "aiTextureType_NORMALS: " << material->GetTextureCount(aiTextureType_NORMALS) << std::endl;
+        // std::cout << "aiTextureType_SHININESS: " << material->GetTextureCount(aiTextureType_SHININESS) << std::endl;
+        // std::cout << "aiTextureType_OPACITY: " << material->GetTextureCount(aiTextureType_OPACITY) << std::endl;
+        // std::cout << "aiTextureType_DISPLACEMENT: " << material->GetTextureCount(aiTextureType_DISPLACEMENT) << std::endl;
+        // std::cout << "aiTextureType_LIGHTMAP: " << material->GetTextureCount(aiTextureType_LIGHTMAP) << std::endl;
+        // std::cout << "aiTextureType_REFLECTION: " << material->GetTextureCount(aiTextureType_REFLECTION) << std::endl;
+        // std::cout << "aiTextureType_UNKNOWN: " << material->GetTextureCount(aiTextureType_UNKNOWN) << std::endl;
     }
 
     return Mesh(vertices, indices, textures);
@@ -112,13 +110,12 @@ Mesh Model::processMesh(aiMesh *mesh, const aiScene *scene)
 
 std::vector<Texture> Model::loadMaterialTextures(aiMaterial *mat, aiTextureType type, std::string typeName)
 {
+    aiString str;
     std::vector<Texture> textures;
 
     for (unsigned int i = 0; i < mat->GetTextureCount(type); i++)
     {
-        aiString str;
         bool skip = false;
-
         mat->GetTexture(type, i, &str);
 
         for (unsigned int j = 0; j < texturesLoaded.size(); j++)
@@ -126,6 +123,7 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial *mat, aiTextureType 
             if (std::strcmp(texturesLoaded[j].path.data(), str.C_Str()) == 0)
             {
                 textures.push_back(texturesLoaded[j]);
+                
                 skip = true;
                 break;
             }
@@ -134,12 +132,11 @@ std::vector<Texture> Model::loadMaterialTextures(aiMaterial *mat, aiTextureType 
         if (!skip)
         {
             Texture texture;
-            std::string path = directory + str.C_Str();
 
-            texture.id = texture.load(path);
-
+            texture.id = texture.load(str.C_Str());
             texture.type = typeName;
             texture.path = str.C_Str();
+
             textures.push_back(texture);
             texturesLoaded.push_back(texture);
         }

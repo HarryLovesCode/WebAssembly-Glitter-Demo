@@ -1,7 +1,9 @@
 #include "camera.hpp"
+#include "glitter.hpp"
 
 #include <algorithm>
 #include <glm/gtc/matrix_transform.hpp>
+#include <math.h>
 
 Camera::Camera()
 {
@@ -11,9 +13,6 @@ Camera::Camera()
     pitch = 0.0f;
     sensitivity = 0.01f;
     speed = 0.3f;
-    lastX = 0.0;
-    lastY = 0.0;
-    lastPos = position;
 }
 
 void Camera::init(GLFWwindow *window)
@@ -42,26 +41,29 @@ void Camera::update()
         keyboardPress(RIGHT);
     }
 
-    front.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
-    front.y = sin(glm::radians(pitch));
-    front.z = sin(glm::radians(yaw)) * cos(glm::radians(pitch));
+    front = glm::normalize(glm::vec3(
+        cos(glm::radians(yaw)) * cos(glm::radians(pitch)),
+        sin(glm::radians(pitch)),
+        sin(glm::radians(yaw)) * cos(glm::radians(pitch))));
 
-    front = glm::normalize(front);
     right = glm::normalize(glm::cross(front, globalUp));
     up = glm::normalize(glm::cross(right, front));
 }
 
 void Camera::mouseMove()
 {
-    double x, y;
+    double x = 0.0;
+    double y = 0.0;
 
     glfwGetCursorPos(window, &x, &y);
 
-    float xCoord = (2.0 * x) / 1280.0;
-    float yCoord = (2.0 * y - 720.0) / 720.0;
+    float width = (float)wWidth;
+    float height = (float)wHeight;
+    float xCoord = (2.0f * x - width) / width;
+    float yCoord = (2.0f * y - height) / height;
 
-    yaw = xCoord * 3.14159264f;
-    pitch = yCoord * 3.14159264f;
+    yaw = xCoord * M_PI;
+    pitch = yCoord * M_PI;
 }
 
 void Camera::keyboardPress(CameraDirection direction)
@@ -85,20 +87,21 @@ void Camera::keyboardPress(CameraDirection direction)
 }
 
 glm::mat4 Camera::getView()
-{ 
-    glm::mat4 out = glm::mat4(1.0);
-    out = glm::rotate(out, yaw, glm::vec3(0.0, 1.0, 0.0));
-    out = glm::rotate(out, pitch, glm::vec3(1.0, 0.0, 0.0));
-    out = glm::translate(out, glm::vec3(0.0, 0.0, 0.0));
+{
+    glm::mat4 transform = glm::mat4(1.0);
+    transform = glm::rotate(transform, yaw, glm::vec3(0.0, 1.0, 0.0));
+    transform = glm::rotate(transform, pitch, glm::vec3(1.0, 0.0, 0.0));
+    transform = glm::translate(transform, glm::vec3(0.0, 0.0, 0.0));
 
-    glm::mat4 tmp = glm::lookAt(position, glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0));
+    glm::mat4 lookAt = glm::lookAt(position, glm::vec3(0.0, 0.0, 0.0), glm::vec3(0.0, 1.0, 0.0));
 
-    return tmp * out;
+    return lookAt * transform;
 }
 
 glm::mat4 Camera::getProj()
 {
-    int width, height;
+    int width = 0;
+    int height = 0;
 
     glfwGetFramebufferSize(window, &width, &height);
     glViewport(0, 0, width, height);

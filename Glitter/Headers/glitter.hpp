@@ -10,12 +10,10 @@
 #include <btBulletDynamicsCommon.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
-
-#define STB_IMAGE_IMPLEMENTATION
 #include <stb_image.h>
 
 // Define Some Constants
-const int mWidth = 1280;
-const int mHeight = 800;
+const int wWidth = 1280;
+const int wHeight = 720;
 
 #endif //~ Glitter Header

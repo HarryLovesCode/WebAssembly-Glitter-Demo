@@ -76,7 +76,7 @@ void Shader::activate(Camera cam)
 
     glm::mat4 persp = cam.getProj();
     glm::mat4 view = cam.getView();
-    glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(1.0f, 1.0f, 1.0f));
+    glm::mat4 model = glm::scale(glm::mat4(1.0f), glm::vec3(40.0f, 40.0f, 40.0f));
     glm::mat4 mvp = persp * view * model;
     glm::mat4 normal = glm::transpose(glm::inverse(view * model));
 
@@ -88,7 +88,7 @@ void Shader::activate(Camera cam)
     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, glm::value_ptr(model));
     glUniformMatrix4fv(normalLoc, 1, GL_FALSE, glm::value_ptr(normal));
 
-    glm::vec3 lightDir = glm::vec3(0.0, 0.0, 1.0);
+    glm::vec3 lightDir = glm::vec3(0.0, 0.0, -1.0);
     glm::vec3 lightCol = glm::vec3(2.0, 2.0, 2.0);
 
     unsigned int camLoc = glGetUniformLocation(program, "u_Camera");

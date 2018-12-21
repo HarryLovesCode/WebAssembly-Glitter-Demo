@@ -4,7 +4,6 @@
 #include "shader.hpp"
 
 #include <GLES3/gl3.h>
-
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -26,9 +25,9 @@ class Texture
   public:
     Texture();
 
-    unsigned int load(std::string path);
+    GLuint load(std::string const &path);
 
-    unsigned int id;
+    GLuint id;
     std::string type;
     std::string path;
 };
@@ -38,7 +37,8 @@ class Mesh
   private:
     void setupMesh();
 
-    unsigned int VBO, EBO;
+    GLuint VBO;
+    GLuint EBO;
 
   public:
     Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);

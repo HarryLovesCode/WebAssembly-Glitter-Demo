@@ -5,12 +5,12 @@
 #include <GLFW/glfw3.h>
 #include <GLES3/gl3.h>
 
+#include "glitter.hpp"
 #include "camera.hpp"
 #include "shader.hpp"
 #include "model.hpp"
 
 GLFWwindow *mWindow;
-int width, height;
 Camera cam;
 Shader prog;
 Model mod;
@@ -33,9 +33,9 @@ int main()
     glfwInit();
     glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 0);
-    glfwWindowHint(GLFW_SAMPLES, 16);
+    // glfwWindowHint(GLFW_SAMPLES, 16);
 
-    mWindow = glfwCreateWindow(1280, 720, "WebGL", NULL, NULL);
+    mWindow = glfwCreateWindow(wWidth, wHeight, "WebGL", NULL, NULL);
 
     if (mWindow == nullptr)
     {
@@ -53,7 +53,7 @@ int main()
 
     cam.init(mWindow);
     prog.init("shader.vert", "shader.frag");
-    mod.load("SciFiHelmet.gltf");
+    mod.load("Corset.gltf");
 
     EmscriptenFullscreenStrategy strategy;
     strategy.scaleMode = EMSCRIPTEN_FULLSCREEN_SCALE_DEFAULT;
